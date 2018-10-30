@@ -83,6 +83,9 @@ class Item:
     def Equip(self):
         print("You can't equip this!")
         return False
+    def Loot(self):
+        print("You take the {0}.".format(self.name))
+        return True
 
 class Equippable(Item):
     def __init__(self,name,description,equipSlot):
@@ -217,9 +220,10 @@ def TakeCommands():
                 ShowItems(currentRoom.items)
                 selection = int(input("Item to loot:"))
                 if(selection < len(currentRoom.GetItems())):
-                    inventory.append(currentRoom.items[selection])
-                    del(currentRoom.items[selection])
-                    return
+                    if(currentRoom.items[selection].Loot()):
+                        inventory.append(currentRoom.items[selection])
+                        del(currentRoom.items[selection])
+                        return
                 else:
                     print("That item is not in this room.")
         if(command == "inventory"):
@@ -256,6 +260,7 @@ def TakeCommands():
                 if(hasattr(inventory[toWield],'diceValue')):
                     if(inventory[toWield].Equip()):
                         print("You are now wielding the {0}".format(inventory[toWield].GetName()))
+                        return
                 else:
                     print("You can not wield that!")
             elif(len(inventory) > 0):
@@ -305,7 +310,7 @@ class Goblin(Entity):
         self.weapon = None
         self.name = name
         if(RollDice(8) <= level):
-            self.weapon = rustySword
+            self.weapon = items['rustySword']()
         self.canMove = True
 
     def Turn(self):
@@ -379,19 +384,34 @@ playerEquipment = {
 
 
 #item definitions go here
-rustySword = Sword("Rusty Sword","A very rusty sword",1,6)
-healthPotion = HealthPotion("Health Potion","A magical draught that restores 1d10 hitpoints.")
-rustyChestplate = Armor("Rusty Chestplate","A very rusty chestplate.  It looks uncomfortable.","chestplate",-2)
 
+def rustySword():
+    return Sword("Rusty Sword","A very rusty sword",1,6)
+def healthPotion():
+    return HealthPotion("Health Potion","A magical draught that restores 1d10 hitpoints.")
+def rustyChestplate():
+    return Armor("Rusty Chestplate","A very rusty chestplate.  It looks uncomfortable.","chestplate",-2)
 currentRoom = Room("stone room","A dank stone room, filled with bricks and water puddles.",list())
 playerStats = Stats(1,10,3,0)
 playerWeapon = None
 playerName = input("What is your name:")
 inventory = list()
-currentRoom.AddItem(rustySword)
-currentRoom.AddItem(healthPotion)
-currentRoom.AddItem(rustyChestplate)
-currentRoom.AddEntity(Goblin())
+items = {
+    'rustySword' : rustySword,
+    'healthPotion' : healthPotion,
+    'rustyChestplate' : rustyChestplate
+    }
+mons = {
+    'goblin' : Goblin
+    }
+
+
+currentRoom.AddItem(items['rustySword']())
+currentRoom.AddItem(items['healthPotion']())
+currentRoom.AddItem(items['rustyChestplate']())
+currentRoom.AddEntity(mons['goblin'](3))
+currentRoom.AddEntity(mons['goblin']())
+
 
 while True:
     TakeCommands()
