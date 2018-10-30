@@ -27,8 +27,23 @@ class Stats:
         print("Level: {0}".format(self.level))
         print("Health(c/m): {0} | {1}".format(self.health,self.maxHealth))
         print("Strength(c/m): {0} | {1}".format(self.strength,self.maxStrength))
-        print("AC: {0}".format(10 - self.armorclass))
-    
+        print("AC: {0}".format(10 + self.armorclass))
+
+
+
+def CombineStats(toAdd,toChange,subtract=False):
+    if(not subtract):
+        toChange.health = toChange.health + toAdd.health
+        toChange.strength = toChange.strength + toAdd.health
+        toChange.armorclass = toChange.armorclass + toAdd.armorclass
+        toChange.level = toChange.level + toAdd.level
+    else:
+        toChange.health = toChange.health - toAdd.health
+        toChange.strength = toChange.strength - toAdd.health
+        toChange.armorclass = toChange.armorclass - toAdd.armorclass
+        toChange.level = toChange.level - toAdd.level
+                
+
 class Buff:
     def __init__(self,name,statchange,duration):
         self.name = name
@@ -65,7 +80,31 @@ class Item:
     def Drink(self,stats):
         print("You can't drink that!")
         return False
+    def Equip(self):
+        print("You can't equip this!")
+        return False
 
+class Equippable(Item):
+    def __init__(self,name,description,equipSlot):
+        self.name = name
+        self.description = description
+        self.equipSlot = equipSlot
+        self.statChange = Stats(0,0,0,0)
+
+    def Equip(self):
+        if(playerEquipment[self.equipSlot] == None):
+            playerEquipment[self.equipSlot] = self
+            CombineStats(self.statChange,playerStats)
+            return True
+        elif(playerEquipment[self.equipSlot] == self):
+            print("This is already equipped!")
+            return False
+        else:
+            print("There is something in that slot.")
+            return False
+    def Unequip(self):
+        CombineStats(self.statChange,playerStats,True)
+        
 class Room:
     def __init__(self,name,description,items):
         self.name = name
@@ -115,13 +154,24 @@ class Room:
                 self.entityList[i].Turn()
     
 
+class Armor(Equippable):
+    def __init__(self,name,description,armorType,acChange):
+        self.name = name
+        self.description = description
+        self.equipSlot = armorType
+        self.statChange = Stats(0,0,0,acChange)
+        self.ac = acChange
+        
+    
 
-class Sword(Item):
+class Sword(Equippable):
     def __init__(self,name,description,diceNumber,diceValue):
         self.name = name
         self.description = description
         self.diceNumber = diceNumber
         self.diceValue = diceValue
+        self.equipSlot = "weapon"
+        self.statChange = Stats(0,0,0,0)
     def Describe(self):
         print(self.description)
         print("This item does " + str(self.diceNumber) + "d" + str(self.diceValue) + " damage.")
@@ -175,6 +225,9 @@ def TakeCommands():
         if(command == "inventory"):
             if(len(inventory) > 0):
                 ShowItems(inventory)
+                for key, item in playerEquipment.items():
+                    if(item != None):
+                        print("{0}: {1}".format(key.capitalize(),item.GetName()))
             else:
                 print("You have nothing in your inventory.")
         if(command == "describe room"):
@@ -187,7 +240,7 @@ def TakeCommands():
                 ShowItems(targets)
                 selection = int(input("Target to attack:"))
                 if(selection < len(targets)):
-                    Attack(playerStats,targets[selection].stats,playerWeapon,"self",targets[selection].name)
+                    Attack(playerStats,targets[selection].stats,playerEquipment["weapon"],"self",targets[selection].name)
                     return
                 else:
                     print("That monster is not here.")
@@ -201,13 +254,39 @@ def TakeCommands():
             toWield = GetItem("Item to wield:")
             if(toWield != -1):
                 if(hasattr(inventory[toWield],'diceValue')):
-                    playerWeapon = inventory[toWield]
-                    print("You are now wielding the {0}".format(inventory[toWield].GetName()))
+                    if(inventory[toWield].Equip()):
+                        print("You are now wielding the {0}".format(inventory[toWield].GetName()))
                 else:
                     print("You can not wield that!")
             elif(len(inventory) > 0):
                 playerWeapon = None
                 print("You raise your fists.")
+        if(command == "wear"):
+            toWield = GetItem("Item to wear:")
+            if(toWield != -1):
+                if(hasattr(inventory[toWield],'ac')):
+                    if(inventory[toWield].Equip()):
+                        print("You are now wearing the {0}".format(inventory[toWield].GetName()))
+                        return
+                else:
+                    print("You can not wear that!")
+        if(command == "unequip"):
+            for key, item in playerEquipment.items():
+                if(item != None):
+                    print("{0}: {1}".format(key.capitalize(),item.GetName()))
+            slot = input("From what slot?")
+            slot.lower()
+            if(slot in playerEquipment):
+                if(playerEquipment[slot] == None):
+                    print("There is nothing in that slot!")
+                else:
+                    playerEquipment[slot].Unequip()
+                    print("You have unequipped the {0}.".format(playerEquipment[slot].GetName()))
+                    playerEquipment[slot] = None
+                    return
+            else:
+                print("That is not a valid slot.")
+                
         if(command == "stats"):
             print("An adventurer named {0}".format(playerName))
             playerStats.Display()
@@ -288,10 +367,21 @@ class HealthPotion(Item):
 levelOneLoot = []
 
 
+playerEquipment = {
+    "helmet" : None,
+    "chestplate" : None,
+    "boots" : None,
+    "weapon" : None,
+    "amulet" : None,
+    "ring" : None
+    }
+
+
+
 #item definitions go here
 rustySword = Sword("Rusty Sword","A very rusty sword",1,6)
 healthPotion = HealthPotion("Health Potion","A magical draught that restores 1d10 hitpoints.")
-
+rustyChestplate = Armor("Rusty Chestplate","A very rusty chestplate.  It looks uncomfortable.","chestplate",-2)
 
 currentRoom = Room("stone room","A dank stone room, filled with bricks and water puddles.",list())
 playerStats = Stats(1,10,3,0)
@@ -300,6 +390,7 @@ playerName = input("What is your name:")
 inventory = list()
 currentRoom.AddItem(rustySword)
 currentRoom.AddItem(healthPotion)
+currentRoom.AddItem(rustyChestplate)
 currentRoom.AddEntity(Goblin())
 
 while True:
