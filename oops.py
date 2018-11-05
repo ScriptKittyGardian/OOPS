@@ -1,13 +1,6 @@
 import random
 import math
 
-def xprint(string,newLine):
-    if(not newline):
-        print(string, end="", flush=True)
-    else:
-        print(string)
-
-
 #Global variables:
 levelUpHealth = 4
 levelUpStrength = 1
@@ -382,11 +375,11 @@ def TakeCommands():
         if(command == "inventory"):
             if(len(inventory) > 0):
                 ShowItems(inventory)
-                for key, item in playerEquipment.items():
-                    if(item != None):
-                        print("{0}: {1}".format(key.capitalize(),item.GetName()))
             else:
                 print("You have nothing in your inventory.")
+            for key, item in playerEquipment.items():
+                    if(item != None):
+                        print("{0}: {1}".format(key.capitalize(),item.GetName()))
         if(command == "describe room"):
             currentRoom.Describe()
         if(command == "attack"):
@@ -414,18 +407,19 @@ def TakeCommands():
                 if(hasattr(inventory[toWield],'diceValue')):
                     if(inventory[toWield].Equip()):
                         print("You are now wielding the {0}".format(inventory[toWield].GetName()))
+                        del(inventory[toWield])
                         return
                 else:
                     print("You can not wield that!")
             elif(len(inventory) > 0):
-                playerWeapon = None
-                print("You raise your fists.")
+                print("You don't have that!")
         if(command == "wear"):
             toWield = GetItem("Item to wear:")
             if(toWield != -1):
                 if(hasattr(inventory[toWield],'ac')):
                     if(inventory[toWield].Equip()):
                         print("You are now wearing the {0}".format(inventory[toWield].GetName()))
+                        del(inventory[toWield])
                         return
                 else:
                     print("You can not wear that!")
@@ -441,6 +435,7 @@ def TakeCommands():
                 else:
                     if(playerEquipment[slot].Unequip()):
                         print("You have unequipped the {0}.".format(playerEquipment[slot].GetName()))
+                        inventory.append(playerEquipment[slot])
                         playerEquipment[slot] = None
                     else:
                         print("You can't unequip cursed items!")
@@ -456,6 +451,7 @@ def TakeCommands():
             toUse = GetItem("Item to drink:")
             if(toUse != -1):
                 if(inventory[toUse].Drink(playerStats)):
+                    del(inventory[toUse])
                     return
         if(command == "move"):
             currentRoom.DescribeMovement()
@@ -600,13 +596,13 @@ def rustyChestplate(bc='',modifier=0):
 def rustyHelmet(bc='',modifier=0):
     return Armor("Rusty Helmet","A very rusty helmet.  Your head won't like you for this.","helmet",-1,modifier,bc)
 def rustyBoots(bc='',modifier=0):
-    return Armor("Rusty Boots","A very rusty pair of boots.  They won't slow you down, but you'll wonder why you're wearing them.",-1,modifier,bc)
+    return Armor("Rusty Boots","A very rusty pair of boots.  They won't slow you down, but you'll wonder why you're wearing them.","boots",-1,modifier,bc)
 def shinyChestplate(bc='',modifier=0):
     return Armor("Shiny Chestplate","A very shiny chestplate.  It looks almost robust.","chestplate",-3,modifier,bc)
 def shinyHelmet(bc='',modifier=0):
     return Armor("Shiny Helmet","A very shiny helmet.  It's a pity there isn't anyone else in this dungeon, because this helmet looks F.A.B.U.L.O.U.S!","helmet",-2,modifier,bc)
 def shinyBoots(bc='',modifier=0):
-    return Armor("Shiny Boots","A very shiny pair of boots.  Try not to admire them and watch where you're walking.",-2,modifier,bc)
+    return Armor("Shiny Boots","A very shiny pair of boots.  Try not to admire them and watch where you're walking.","boots",-2,modifier,bc)
 
 items = {
     'healthPotion' : healthPotion,
@@ -621,7 +617,8 @@ items = {
     'shinyBoots' : shinyBoots,
     'shinySword' : shinySword,
     'strengthPotion' : strengthPotion,
-    'weaknessPotion' : weaknessPotion
+    'weaknessPotion' : weaknessPotion,
+    'rustyScimitar' : rustyScimitar
     }
 
 lootTable = list()
@@ -630,12 +627,14 @@ lootTable.append(['rustyHelmet',
                   'rustyBoots',
                   'rustyChestplate',
                   'rustySword',
-                  'healthPotion'])
+                  'healthPotion',
+                  'weaknessPotion'])
 #Level 1 Loot
 lootTable.append(['shinyChestplate',
                   'shinyHelmet',
                   'shinyBoots',
-                  'shinySword'])
+                  'shinySword',
+                  'strengthPotion'])
 mons = {
     'goblin' : Goblin,
     'kobold' : Kobold
@@ -656,7 +655,33 @@ def GenerateDescription(levelNumber):
         return "A {0} stone room, filled with {1} and {2}.".format(adj,n1,n2)
 
 def GenerateRoom(levelNumber,x,y):
-    return Room("stone room",GenerateDescription(levelNumber),list(),x,y,levelNumber)
+    gRoom = Room("stone room",GenerateDescription(levelNumber),list(),x,y,levelNumber)
+    if(RollDice(20)):
+        ln = levelNumber + random.randint(-3,1)
+    if(RollDice(4) > 1):
+        if(ln < 0):
+            ln = 0
+        if(ln >= len(lootTable)):
+            ln = len(lootTable) - 1
+        number = random.randint(0,3)
+        for i in range(number):
+            gRoom.AddItem(items[lootTable[ln][random.randint(0,len(lootTable[ln]) - 1)]]())
+    if(RollDice(20)):
+        ln = levelNumber + random.randint(-3,1)
+    if(RollDice(4) > 1):
+        if(ln < 0):
+            ln = 0
+        if(ln >= len(enemyTable)):
+            ln = len(enemyTable) - 1
+        number = random.randint(0,levelNumber)
+        for i in range(number):
+            level = 3  - number
+            level += ln
+            level += random.randint(-1,0)
+            if(level <= 0):
+                level = 1
+            gRoom.AddEntity(mons[enemyTable[ln][random.randint(0,len(enemyTable[ln]) - 1)]](level))
+    return gRoom
 
 def GenerateDungeon(levelNumber):
     global currentRoom
@@ -745,7 +770,6 @@ for i in range(dungeonSize) :
 ChangeRoom(upStairRooms[0])
 
 
-#currentRoom = Room("stone room","A dank stone room, filled with bricks and water puddles.",list())
 playerStats = Stats(1,10,3,0)
 dungeonLevel = 0
 playerWeapon = None
@@ -753,12 +777,6 @@ playerXp = 0
 inventory = list()
 xpTarget = 10
 
-
-
-currentRoom.AddItem(items['rustySword']('blessed',2))
-currentRoom.AddItem(items['healthPotion']())
-currentRoom.AddItem(items['rustyChestplate']())
-#currentRoom.AddEntity(mons['goblin']())
 
 def CheckLevelUp():
     global xpTarget
@@ -770,6 +788,7 @@ def CheckLevelUp():
         playerStats.level += 1
         print("Welcome to level {0}".format(playerStats.level))
         xpTarget = xpTarget * 2
+        CheckLevelUp()
     
 while True:
     CheckLevelUp()
