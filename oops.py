@@ -9,10 +9,16 @@ def xprint(string,newLine):
 
 
 #Global variables:
-        
+levelUpHealth = 4
+levelUpStrength = 1
+
 dungeonW = 10
 dungeonH = 10
-standardAdjectives = {
+dungeonSize = 5
+levelTypes = list()
+upStairRooms = [None] * dungeonSize
+downStairRooms = [None] * dungeonSize
+standardAdjectives = [
     "dank",
     "cramped",
     "dark",
@@ -21,8 +27,19 @@ standardAdjectives = {
     "wet",
     "damp",
     "stupidly large",
-    "hilariously small",
-    "
+    "hilariously small"
+]
+
+standardNouns = [
+    "water puddles",
+    "discarded shackles",
+    "ruined carpets",
+    "rotting wood",
+    "loose bricks",
+    "scurrying mice"
+    ]
+for i in range(dungeonSize):
+    levelTypes.append("standard")
 
     
 def RollDice(sides,rolls=1):
@@ -72,7 +89,7 @@ class Entity:
         self.name = name
         self.inventory = list()
         self.weapon = None
-        self.xp = 10
+        self.xp = 10 + RollDice(10,self.stats.level)
     def GetStats(self):
         return self.stats
     def GetName(self):
@@ -83,6 +100,8 @@ class Entity:
         global playerXp
         if(len(self.inventory) != 0):
             currentRoom.AddItem(self.inventory)
+            print("The {0} dropped:".format(self.GetName()))
+            ShowItems(self.inventory)
         if(self.weapon != None):
             currentRoom.AddItem(self.weapon)
         comparativeLevel = self.stats.level - playerStats.level
@@ -95,7 +114,10 @@ class Entity:
 
     def Turn(self):
         return
-
+    
+    def __del__(self):
+            self.DropLoot()
+            print("The {0} is dead!".format(self.GetName()))
 
 
 class Item:
@@ -211,6 +233,7 @@ class Room:
         if(self.stairs != ''):
             print("There are stairs {0}.".format(self.stairs))
     def Move(self,direction):
+        global dungeonLevel
         if(direction in self.movement):
             if(self.movement[direction] != None):
                 print("You move to the {0}.".format(direction))
@@ -220,7 +243,22 @@ class Room:
                 print("There is no door in that direction.")
                 return False
         elif(direction == self.stairs):
-            print("yooooooo")
+            if(self.stairs == "down"):
+                dungeonLevel += 1
+                print("You go down the stairs.  Welcome to dungeon level {0}.".format(dungeonLevel))
+                ChangeRoom(upStairRooms[dungeonLevel])
+            else:
+                if(dungeonLevel != 0):
+                    dungeonLevel -= 1
+                    print("You go up the stairs.  Welcome to dungeon level {0}.".format(dungeonLevel))
+                    ChangeRoom(downStairRooms[dungeonLevel])
+                else:
+                    if(input("Are you sure you want to exit the dungeon? (y/n)") == "y"):
+                        print("{0} was a coward and left the dungeon.".format(playerName))
+                        exit()
+                               
+                
+                
         else:
             print("That is not a valid direction")
                 
@@ -232,7 +270,7 @@ class Room:
             for i in self.items:
                 print(i.GetName())
     def Describe(self):
-        print(self.description)
+        print("You are in " + self.description.lower())
         if(len(self.items) > 0):
             print("Items in this room:")
             ShowItems(self.items)
@@ -412,6 +450,7 @@ def TakeCommands():
                 
         if(command == "stats"):
             print("An adventurer named {0}".format(playerName))
+            print("Currently on dungeon level {0}".format(dungeonLevel))
             playerStats.Display()
         if(command == "drink"):
             toUse = GetItem("Item to drink:")
@@ -434,7 +473,7 @@ class Goblin(Entity):
         self.weapon = None
         self.name = name
         self.inventory = list()
-        self.xp = 10
+        self.xp = 10 + RollDice(10,self.stats.level)
         if(RollDice(8) <= level):
             self.weapon = items['rustySword'](random.choice(['','cursed','']),random.randint(-2,1))
             self.xp += 10
@@ -443,9 +482,22 @@ class Goblin(Entity):
         if(self.canMove):
             Attack(self.stats,playerStats,self.weapon,self.name)
         
-    def __del__(self):
-        self.DropLoot()
-        print("The Goblin is dead!")
+
+class Kobold(Entity):
+    def __init__(self,level=1,name="Kobold"):
+        self.stats = Stats(level,RollDice(4,level),RollDice(3,level),0)
+        self.weapon = None
+        self.name = name
+        self.inventory = list()
+        self.xp = 12 + RollDice(10,self.stats.level)
+        if(RollDice(8) <= level):
+            self.weapon = items['rustyScimitar'](random.choice(['','cursed','']),random.randint(-2,1))
+            self.xp += 12
+        self.canMove = True
+    def Turn(self):
+        if(self.canMove):
+            Attack(self.stats,playerStats,self.weapon,self.name)
+            
 
 
 
@@ -455,7 +507,7 @@ def Attack(aStats,dStats,aWep,attacker,defender=''):
     if(aWep == None):
         weaponName = "bare hands"
     else:
-        weaponName = aWep.name
+        weaponName = aWep.GetName()
     if(attacker == "self"):
         print("You attack the " + defender + " with your " + weaponName + "!")
     else:
@@ -471,7 +523,6 @@ def Attack(aStats,dStats,aWep,attacker,defender=''):
         else:
             print("You dodge!")
         return
-
     damageDealt = RollDice(3,aStats.strength) #initial strength damage
     if(aWep != None):
         damageDealt += RollDice(aWep.diceValue,aWep.diceNumber) + aWep.modifier
@@ -494,8 +545,28 @@ class HealthPotion(Item):
         else:
             print("The {0} drinks a health potion!".format(user))
         return True
-
-
+class WeaknessPotion(Item):
+    def Drink(self,stats,user="self"):
+        stats.strength = stats.strength - RollDice(3) - self.modifier
+        if(stats.strength < 1):
+            stats.strength = 1
+        if(user == "self"):
+            print("You feel much weaker.")
+            print("You now have {0} strength.".format(stats.strength))
+        else:
+            print("The {0} drinks a weakness potion!".format(user))
+        return True
+class StrengthPotion(Item):
+    def Drink(self,stats,user="self"):
+        stats.strength = stats.strength + RollDice(3) + self.modifier
+        if(stats.strength > stats.maxStrength):
+            stats.strength = stats.maxStrength
+        if(user == "self"):
+            print("You feel much stronger.")
+            print("You now have {0} strength.".format(stats.strength))
+        else:
+            print("The {0} drinks a strength potion!".format(user))
+        return True
 levelOneLoot = []
 
 #Equipment table
@@ -514,10 +585,16 @@ playerEquipment = {
 
 def rustySword(bc='',modifier=0):
     return Sword("Rusty Sword","A very rusty sword",1,3,modifier,bc)
-def rustySword(bc='',modifier=0):
+def rustyScimitar(bc='',modifier=0):
+    return Sword("Rusty Scimitar","A very rusty scimitar",2,2,modifier,bc)
+def shinySword(bc='',modifier=0):
     return Sword("Shiny Sword","A very shiny sword",1,6,modifier,bc)
 def healthPotion(bc='',modifier=0):
     return HealthPotion("Health Potion","A magical draught that restores 1d10 hitpoints.",modifier,bc)
+def strengthPotion(bc='',modifier=0):
+    return StrengthPotion("Strength Potion","A magical draught that restores 1d3 strength.",modifier,bc)
+def weaknessPotion(bc='',modifier=0):
+    return WeaknessPotion("Weakness Potion","A magical draught that subtracts 1d3 strength.",modifier,bc)
 def rustyChestplate(bc='',modifier=0):
     return Armor("Rusty Chestplate","A very rusty chestplate.  It looks uncomfortable.","chestplate",-2,modifier,bc)
 def rustyHelmet(bc='',modifier=0):
@@ -531,11 +608,55 @@ def shinyHelmet(bc='',modifier=0):
 def shinyBoots(bc='',modifier=0):
     return Armor("Shiny Boots","A very shiny pair of boots.  Try not to admire them and watch where you're walking.",-2,modifier,bc)
 
+items = {
+    'healthPotion' : healthPotion,
+    #Rusty armor set
+    'rustyChestplate' : rustyChestplate,
+    'rustyHelmet' : rustyHelmet,
+    'rustyBoots' : rustyBoots,
+    'rustySword' : rustySword,
+    #Shiny armor set
+    'shinyChestplate' : shinyChestplate,
+    'shinyHelmet' : shinyHelmet,
+    'shinyBoots' : shinyBoots,
+    'shinySword' : shinySword,
+    'strengthPotion' : strengthPotion,
+    'weaknessPotion' : weaknessPotion
+    }
+
+lootTable = list()
+#Level 0 loot
+lootTable.append(['rustyHelmet',
+                  'rustyBoots',
+                  'rustyChestplate',
+                  'rustySword',
+                  'healthPotion'])
+#Level 1 Loot
+lootTable.append(['shinyChestplate',
+                  'shinyHelmet',
+                  'shinyBoots',
+                  'shinySword'])
+mons = {
+    'goblin' : Goblin,
+    'kobold' : Kobold
+    }
+enemyTable = list()
+#level 0 Monsters
+enemyTable.append(['goblin','kobold'])
 def GenerateDescription(levelNumber):
-    
+    lt = levelTypes[levelNumber]
+    if lt == "standard":
+        adj = standardAdjectives[random.randint(0,len(standardAdjectives) - 1)]
+        nounIndex = random.randint(0,len(standardNouns) - 1)
+        n1 = standardNouns[nounIndex]
+        newIndex = random.randint(0,len(standardNouns) - 1)
+        while newIndex == nounIndex:
+            newIndex = random.randint(0,len(standardNouns) - 1)
+        n2 = standardNouns[newIndex]
+        return "A {0} stone room, filled with {1} and {2}.".format(adj,n1,n2)
 
 def GenerateRoom(levelNumber,x,y):
-    return Room("stone room","A dank stone room, filled with bricks and water puddles.",list(),x,y,levelNumber)
+    return Room("stone room",GenerateDescription(levelNumber),list(),x,y,levelNumber)
 
 def GenerateDungeon(levelNumber):
     global currentRoom
@@ -599,13 +720,15 @@ def GenerateDungeon(levelNumber):
     spawnRoom = random.randint(0,len(generatedRooms) - 1)
     roomModify = generatedRooms[spawnRoom]
     roomModify.stairs = "up"
+    upStairRooms[levelNumber] = roomModify
     for i in generatedRooms:
         i.InitializeMovement(toReturn)
-    ChangeRoom(roomModify)
+    #ChangeRoom(roomModify)
     del(generatedRooms[spawnRoom])
     downStairs = random.randint(0,len(generatedRooms) - 1)
     generatedRooms[downStairs].stairs = "down"
-    generatedRooms[downStairs].InitializeMovement(toReturn)
+    #generatedRooms[downStairs].InitializeMovement(toReturn)
+    downStairRooms[levelNumber] = generatedRooms[downStairs]
     return toReturn
 
 
@@ -616,39 +739,40 @@ def ChangeRoom(newRoom):
     currentRoom = newRoom
     currentRoom.Describe()
 playerName = input("What is your name:")
-dungeon = [3]
-dungeon[0] = GenerateDungeon(0)
+dungeon = list()
+for i in range(dungeonSize) :
+    dungeon.append(GenerateDungeon(i))
+ChangeRoom(upStairRooms[0])
 
 
 #currentRoom = Room("stone room","A dank stone room, filled with bricks and water puddles.",list())
 playerStats = Stats(1,10,3,0)
+dungeonLevel = 0
 playerWeapon = None
 playerXp = 0
 inventory = list()
-items = {
-    'healthPotion' : healthPotion,
-    #Rusty armor set
-    'rustyChestplate' : rustyChestplate,
-    'rustyHelmet' : rustyHelmet,
-    'rustyBoots' : rustyBoots,
-    'rustySword' : rustySword,
-    #Shiny armor set
-    'shinyChestplate' : shinyChestplate,
-    'shinyHelmet' : shinyHelmet,
-    'shinyBoots' : shinyBoots
-    }
-mons = {
-    'goblin' : Goblin
-    }
+xpTarget = 10
+
 
 
 currentRoom.AddItem(items['rustySword']('blessed',2))
 currentRoom.AddItem(items['healthPotion']())
 currentRoom.AddItem(items['rustyChestplate']())
-currentRoom.AddEntity(mons['goblin']())
+#currentRoom.AddEntity(mons['goblin']())
 
-
+def CheckLevelUp():
+    global xpTarget
+    if(playerXp >= xpTarget):
+        playerStats.maxHealth += levelUpHealth
+        playerStats.maxStrength += levelUpStrength
+        playerStats.strength += levelUpStrength
+        playerStats.health += levelUpHealth
+        playerStats.level += 1
+        print("Welcome to level {0}".format(playerStats.level))
+        xpTarget = xpTarget * 2
+    
 while True:
+    CheckLevelUp()
     TakeCommands()
     currentRoom.UpdateEntities()
 
