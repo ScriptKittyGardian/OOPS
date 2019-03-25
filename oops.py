@@ -42,13 +42,14 @@ def RollDice(sides,rolls=1):
     return total
     
 class Stats:
-    def __init__(self,level,health,strength,armorclass):
+    def __init__(self,level=0,health=0,strength=0,armorclass=0):
         self.maxHealth = health
         self.health = health
         self.strength = strength
         self.maxStrength = strength
         self.armorclass = armorclass
         self.level = level
+        self.canMove = True
     def Display(self):
         print("Level: {0}".format(self.level))
         print("Health(c/m): {0} | {1}".format(self.health,self.maxHealth))
@@ -75,12 +76,68 @@ class Buff:
         self.name = name
         self.statchange = statchange
         self.duration = duration
-    
+        self.parentStats = 0
+    def Apply(self,stats,user):
+        self.parentStats = stats
+        CombineStats(self.statchange,stats)
+    def Update(self):
+        self.duration -= 1
+    def Done(self):
+        if(self.duration <= 0):
+            CombineStats(self.statchange,parentStats,True)
+            return True
+        else:
+            return False
+
+class Sleeping(Buff):
+    def __init__(self,duration,stats,user="self",displayText=True):
+        self.name = "sleeping"
+        self.statchange = Stats()
+        self.duration = duration
+        self.stats = stats
+        self.user = user
+        self.stats.canMove = False
+        self.combat = False
+        self.startHealth = self.stats.health
+        if(displayText == False):
+            return
+        if(user == "self"):
+            print("You fall suddenly fall asleep!")
+        if(user != "self"):
+            print("The {0} suddenly falls asleep!".format(user))
+    def Update(self):
+        self.stats.canMove = False
+        if(self.user == "self"):
+            print("ZzzzZzzz....")
+        if(self.stats.health != self.startHealth and random.randint(0,4) <= 2):
+            self.duration = 0
+            self.combat = True
+        else:
+            self.duration -= 1
+    def Done(self):
+        if(self.duration <= 0):
+            self.stats.canMove = True
+            if(self.user == "self"):
+                if(self.combat):
+                    print("The combat awakens you!")
+                else:
+                    print("You wake up.")
+            else:
+                if(self.combat):
+                    print("The combat awakens the {0}.".format(self.user))
+                else:
+                    print("The {0} wakes up.".format(self.user))
+            return True
+        else:
+            return False
+        
+        
 class Entity:
     def __init__(self,name,stats):
         self.stats = stats
         self.name = name
         self.inventory = list()
+        self.buffs = list()
         self.weapon = None
         self.xp = 10 + RollDice(10,self.stats.level)
     def GetStats(self):
@@ -89,6 +146,8 @@ class Entity:
         return self.name + "(Level {0})".format(self.stats.level)
     def SetStats(self,new):
         self.stats = new
+    def ApplyBuff(self,buff):
+        self.buffs.append(buff)
     def DropLoot(self):
         global playerXp
         if(len(self.inventory) != 0):
@@ -119,12 +178,13 @@ class Item:
         self.description = description
         self.modifier = modifier
         self.bc = bc
-        self.inspected = True
+        self.inspected = False
     def Describe(self):
         print(self.description)
     def Inspect(self):
         self.inspected = True
         print("A {0}".format(self.GetName()))
+        print(self.description)
     def GetName(self):
         toPrint = ''
         if(self.inspected):
@@ -302,7 +362,7 @@ class Armor(Equippable):
         self.equipSlot = armorType
         self.statChange = Stats(0,0,0,acChange + (modifier*-1))
         self.ac = acChange
-        self.inspected = True
+        self.inspected = False
         self.modifier=modifier
         self.bc = bc
 
@@ -340,8 +400,17 @@ def GetItem(text):
     else:
         print("You don't have that item!")
         return -1
+    
+def UpdatePlayerBuffs():
+    for i in range(0,len(playerBuffs)):
+        playerBuffs[i].Update()
+        if(playerBuffs[i].Done()):
+            del(playerBuffs[i])
 def TakeCommands():
     global playerWeapon
+    UpdatePlayerBuffs()
+    if(playerStats.canMove == False):
+        return
     while True:
         command = input("Input command:")
         if(command == "inspect room"):
@@ -361,6 +430,9 @@ def TakeCommands():
                     print("You do not have that item!")
             else:
                 print("You have nothing to inspect.")
+        if(command == "sleep"):
+            playerBuffs.append(Sleeping(3,playerStats))
+            return
         if(command == "loot"):
             if(len(currentRoom.GetItems()) > 0):
                 ShowItems(currentRoom.items)
@@ -469,6 +541,7 @@ class Goblin(Entity):
         self.weapon = None
         self.name = name
         self.inventory = list()
+        self.buffs = list()
         self.xp = 10 + RollDice(10,self.stats.level)
         if(RollDice(8) <= level):
             self.weapon = items['rustySword'](random.choice(['','cursed','']),random.randint(-2,1))
@@ -485,6 +558,7 @@ class Kobold(Entity):
         self.weapon = None
         self.name = name
         self.inventory = list()
+        self.buffs = list()
         self.xp = 12 + RollDice(10,self.stats.level)
         if(RollDice(8) <= level):
             self.weapon = items['rustyScimitar'](random.choice(['','cursed','']),random.randint(-2,1))
@@ -499,6 +573,7 @@ class Kobold(Entity):
 
 
 def Attack(aStats,dStats,aWep,attacker,defender=''):
+    
     #damage roll
     if(aWep == None):
         weaponName = "bare hands"
@@ -513,7 +588,7 @@ def Attack(aStats,dStats,aWep,attacker,defender=''):
         target = 10 + dStats.armorclass + aStats.level
     else:
         target = 10 + random.randint(dStats.armorclass,0) + aStats.level
-    if(d20 >= target):
+    if(d20 >= target and dStats.canMove == True):
         if(attacker == "self"):
             print("You miss!")
         else:
@@ -665,7 +740,10 @@ def GenerateRoom(levelNumber,x,y):
             ln = len(lootTable) - 1
         number = random.randint(0,3)
         for i in range(number):
-            gRoom.AddItem(items[lootTable[ln][random.randint(0,len(lootTable[ln]) - 1)]]())
+            mod = 0
+            if(RollDice(10) < 3):
+                mod = random.randint(-2,2)
+            gRoom.AddItem(items[lootTable[ln][random.randint(0,len(lootTable[ln]) - 1)]](random.choice(['','cursed','','','','','blessed']),0))
     if(RollDice(20)):
         ln = levelNumber + random.randint(-3,1)
     if(RollDice(4) > 1):
@@ -744,6 +822,7 @@ def GenerateDungeon(levelNumber):
             break
     spawnRoom = random.randint(0,len(generatedRooms) - 1)
     roomModify = generatedRooms[spawnRoom]
+    roomModify.AddEntity(Goblin())
     roomModify.stairs = "up"
     upStairRooms[levelNumber] = roomModify
     for i in generatedRooms:
@@ -771,6 +850,7 @@ ChangeRoom(upStairRooms[0])
 
 
 playerStats = Stats(1,10,3,0)
+playerBuffs = list()
 dungeonLevel = 0
 playerWeapon = None
 playerXp = 0
