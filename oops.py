@@ -49,6 +49,7 @@ class Stats:
         self.maxStrength = strength
         self.armorclass = armorclass
         self.level = level
+        self.buffs = list()
         self.canMove = True
     def Display(self):
         print("Level: {0}".format(self.level))
@@ -105,7 +106,7 @@ class Sleeping(Buff):
             print("You fall suddenly fall asleep!")
         if(user != "self"):
             print("The {0} suddenly falls asleep!".format(user))
-    def Update(self):
+    def Update(self,noduration=False):
         self.stats.canMove = False
         if(self.user == "self"):
             print("ZzzzZzzz....")
@@ -113,7 +114,8 @@ class Sleeping(Buff):
             self.duration = 0
             self.combat = True
         else:
-            self.duration -= 1
+            if(noduration == False):
+                self.duration -= 1
     def Done(self):
         if(self.duration <= 0):
             self.stats.canMove = True
@@ -137,7 +139,6 @@ class Entity:
         self.stats = stats
         self.name = name
         self.inventory = list()
-        self.buffs = list()
         self.weapon = None
         self.xp = 10 + RollDice(10,self.stats.level)
     def GetStats(self):
@@ -147,7 +148,7 @@ class Entity:
     def SetStats(self,new):
         self.stats = new
     def ApplyBuff(self,buff):
-        self.buffs.append(buff)
+        self.stats.buffs.append(buff)
     def DropLoot(self):
         global playerXp
         if(len(self.inventory) != 0):
@@ -163,10 +164,8 @@ class Entity:
         if(toAdd > 0):
             print("You gained {0} XP.".format(toAdd))
             playerXp += toAdd
-
     def Turn(self):
-        return
-    
+        return    
     def __del__(self):
             self.DropLoot()
             print("The {0} is dead!".format(self.GetName()))
@@ -352,7 +351,9 @@ class Room:
     def UpdateEntities(self):
         self.CheckForDead()
         for i in range(0,len(self.entityList)):
-            self.entityList[i].Turn()
+            UpdateBuffs(self.entityList[i].stats)
+            if(self.entityList[i].stats.canMove == True):
+                self.entityList[i].Turn()
     
 
 class Armor(Equippable):
@@ -400,15 +401,19 @@ def GetItem(text):
     else:
         print("You don't have that item!")
         return -1
-    
-def UpdatePlayerBuffs():
-    for i in range(0,len(playerBuffs)):
-        playerBuffs[i].Update()
-        if(playerBuffs[i].Done()):
-            del(playerBuffs[i])
+def UpdateBuffs(stats,secondpass=False):
+    refresh=False
+    for i in range(0,len(stats.buffs)):
+        stats.buffs[i].Update(secondpass)
+        if(stats.buffs[i].Done()):
+            del(stats.buffs[i])
+            refresh=True
+    if(refresh):
+        UpdateBuffs(stats,True)
+            
 def TakeCommands():
     global playerWeapon
-    UpdatePlayerBuffs()
+    UpdateBuffs(playerStats)
     if(playerStats.canMove == False):
         return
     while True:
@@ -431,8 +436,20 @@ def TakeCommands():
             else:
                 print("You have nothing to inspect.")
         if(command == "sleep"):
-            playerBuffs.append(Sleeping(3,playerStats))
+            playerStats.buffs.append(Sleeping(3,playerStats))
             return
+        if(command == "makesleep"):
+            targets = currentRoom.entityList
+            if(len(targets) == 0):
+                print("Nothing to attack!")
+            else:
+                ShowItems(targets)
+                selection = int(input("Target to attack:"))
+                if(selection < len(targets)):
+                    targets[selection].stats.buffs.append(Sleeping(3,targets[selection].stats,targets[selection].name))
+                    return
+                else:
+                    print("That monster is not here.")
         if(command == "loot"):
             if(len(currentRoom.GetItems()) > 0):
                 ShowItems(currentRoom.items)
@@ -638,6 +655,14 @@ class StrengthPotion(Item):
         else:
             print("The {0} drinks a strength potion!".format(user))
         return True
+class SleepingPotion(Item):
+    def Drink(self,stats,user="self"):
+        stats.buffs.append(Sleeping(RollDice(6,2),stats,"self",False))
+        if(user == "self"):
+            print("You instantly fall asleep.")
+        else:
+            print("The {0} drinks a sleeping potion and instantly falls asleep!".format(user))
+        return True
 levelOneLoot = []
 
 #Equipment table
@@ -666,6 +691,8 @@ def strengthPotion(bc='',modifier=0):
     return StrengthPotion("Strength Potion","A magical draught that restores 1d3 strength.",modifier,bc)
 def weaknessPotion(bc='',modifier=0):
     return WeaknessPotion("Weakness Potion","A magical draught that subtracts 1d3 strength.",modifier,bc)
+def sleepingPotion(bc='',modifier=0):
+    return SleepingPotion("Sleeping Potion","A magical draught that makes its drinker instantly fall asleep.",modifier,bc)
 def rustyChestplate(bc='',modifier=0):
     return Armor("Rusty Chestplate","A very rusty chestplate.  It looks uncomfortable.","chestplate",-2,modifier,bc)
 def rustyHelmet(bc='',modifier=0):
@@ -822,7 +849,7 @@ def GenerateDungeon(levelNumber):
             break
     spawnRoom = random.randint(0,len(generatedRooms) - 1)
     roomModify = generatedRooms[spawnRoom]
-    roomModify.AddEntity(Goblin())
+    roomModify.AddItem(sleepingPotion())
     roomModify.stairs = "up"
     upStairRooms[levelNumber] = roomModify
     for i in generatedRooms:
